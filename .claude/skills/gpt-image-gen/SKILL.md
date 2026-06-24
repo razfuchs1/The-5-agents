@@ -41,6 +41,25 @@ curl -sS -X POST "https://api.openai.com/v1/images/generations" \
   }' > /tmp/gpt-image-response.json
 ```
 
+## עריכת תמונה / שילוב תמונות קלט (/images/edits)
+כשצריך לשלב תמונה קיימת (למשל להוסיף אדם מתמונת reference לתוך תמונה אחרת), השתמש ב-endpoint של עריכה במקום generations. הוא מקבל תמונת קלט אחת או יותר כ-`multipart/form-data` (שדה `image[]` חוזר לכל תמונה), ואותו מודל `gpt-image-2`:
+
+```bash
+curl -sS -X POST "https://api.openai.com/v1/images/edits" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F "model=gpt-image-2" \
+  -F "image[]=@<base-image>.png" \
+  -F "image[]=@<reference-image>.jpeg" \
+  -F "prompt=<the prompt>" \
+  -F "size=1024x1024" \
+  -F "quality=medium" \
+  > /tmp/gpt-image-response.json
+```
+
+- התמונה הראשונה היא בדרך כלל ה-base (הסצנה), והנוספות הן reference (האדם/האובייקט לשילוב).
+- ה-prompt צריך לתאר את הקומפוזיציה הסופית (מי, איפה, באיזו פוזה).
+- הפענוח (decode) של התשובה זהה לזה של generations — `b64_json` ב-`.data[0]` (ראה למטה).
+
 ## Decode התמונה ושמירה — עם jq
 ```bash
 jq -r '.data[0].b64_json' /tmp/gpt-image-response.json | base64 --decode > "<output-path>.png"
@@ -54,6 +73,18 @@ python -c "import json,base64,sys; d=json.load(open('/tmp/gpt-image-response.jso
 ```
 
 (אם `python` לא קיים, נסה `python3`.)
+
+## Decode — fallback ללא jq וללא python (grep/sed + base64)
+בחלק מסביבות Windows גם `jq` וגם `python` אינם זמינים (לעיתים `python` הוא רק stub של Microsoft Store). במקרה כזה אפשר לחלץ את שדה ה-base64 עם כלי טקסט בלבד ולפענח עם `base64 --decode` (שמגיע עם Git Bash):
+
+```bash
+# חילוץ ערך b64_json מה-JSON ופענוחו ישירות ל-PNG
+grep -o '"b64_json":[[:space:]]*"[^"]*"' /tmp/gpt-image-response.json \
+  | sed 's/.*"b64_json":[[:space:]]*"//; s/"$//' \
+  | base64 --decode > "<output-path>.png"
+```
+
+שיטה זו נבדקה ועובדת בסביבה הנוכחית. סדר העדיפויות המומלץ: `jq` → `python` → grep/sed.
 
 ## אבחון שגיאות
 - אם הקובץ ריק או לא נוצר — פתח את `/tmp/gpt-image-response.json` ובדוק את שדה ה-`error`.
